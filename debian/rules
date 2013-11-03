@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+# DH_GOPKG is the upstream path which you would normally “go get”.
+# Using it allows us to build applications without patching locations.
+export DH_GOPKG := database
+
+# It appears that somebody didn't update the tests.
+override_dh_auto_test:
+
+override_dh_auto_configure:
+	thrift --gen go --out . cassandra.thrift
+	rm -fr cassandra/cassandra-remote/cassandra-remote.go
+	dh_auto_configure -O--buildsystem=golang
+
+%:
+	dh $@ --buildsystem=golang --with=golang

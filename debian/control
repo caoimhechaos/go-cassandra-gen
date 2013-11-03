@@ -1,0 +1,17 @@
+Source: golang-cassandra-gen
+Section: devel
+Priority: extra
+Maintainer: Caoimhe Chaos <caoimhechaos@protonmail.com>
+Build-Depends: debhelper (>= 9), golang-go, dh-golang, golang-thrift-dev,
+ thrift-compiler (= 0.9.0-3.1)
+Standards-Version: 3.9.4
+Homepage: http://cassandra.apache.org/
+Vcs-Git: git://anonscm.debian.org/pkg-go/packages/golang-cassandra.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-go/packages/golang-cassandra.git;a=summary
+
+Package: golang-cassandra-dev
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, golang-thrift-dev
+Description: Go client library for Cassandra databases
+ This package contains the library which implements the client for the Apache
+ Cassandra database.
