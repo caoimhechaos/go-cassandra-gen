@@ -3,6 +3,7 @@ package cassandra
 import (
 	"io"
 	"sync"
+	"time"
 
 	"git.apache.org/thrift.git/lib/go/thrift"
 )
@@ -37,6 +38,11 @@ func isRetryable(err error, ue *UnavailableException,
 // Create a new retry Cassandra wrapper connected to the given host.
 func NewRetryCassandraClient(host string) (c *RetryCassandraClient,
 	err error) {
+	return NewRetryCassandraClientTimeout(host, 0)
+}
+
+func NewRetryCassandraClientTimeout(host string, timeout time.Duration) (
+	c *RetryCassandraClient, err error) {
 	var protocolFactory *thrift.TBinaryProtocolFactory
 	var socket *thrift.TSocket
 	var transportFactory thrift.TTransportFactory
@@ -44,7 +50,11 @@ func NewRetryCassandraClient(host string) (c *RetryCassandraClient,
 	protocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
 	transportFactory = thrift.NewTFramedTransportFactory(
 		thrift.NewTTransportFactory())
-	socket, err = thrift.NewTSocket(host)
+	if timeout > 0 {
+		socket, err = thrift.NewTSocketTimeout(host, timeout)
+	} else {
+		socket, err = thrift.NewTSocket(host)
+	}
 	if err != nil {
 		return
 	}
