@@ -1,3 +1,9 @@
+golang-cassandra-gen (19.37.0.2-1) unstable; urgency=low
+
+  * Add a way to specify timeouts.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Mon, 02 Dec 2013 00:56:40 +0100
+
 golang-cassandra-gen (19.37.0.1-1) unstable; urgency=low
 
   * Implement retry logic.
