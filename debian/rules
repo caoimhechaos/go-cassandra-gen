@@ -7,9 +7,6 @@ export DH_VERBOSE=1
 # Using it allows us to build applications without patching locations.
 export DH_GOPKG := database
 
-# It appears that somebody didn't update the tests.
-override_dh_auto_test:
-
 override_dh_auto_configure:
 	thrift --gen go --out . cassandra.thrift
 	rm -fr cassandra/cassandra-remote/cassandra-remote.go
