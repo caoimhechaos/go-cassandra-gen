@@ -1,3 +1,10 @@
+golang-cassandra-gen (19.37.0.3-1) unstable; urgency=low
+
+  * Add UUID objects and methods to generate, serialize and parse
+    time based UUIDs.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Fri, 03 Jan 2014 15:54:35 +0100
+
 golang-cassandra-gen (19.37.0.2-1) unstable; urgency=low
 
   * Add a way to specify timeouts.
