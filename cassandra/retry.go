@@ -38,8 +38,7 @@ type RetryCassandraClient struct {
 }
 
 // Determine if a given error can be solved by submitting the request again.
-func isRetryable(err error, ue *UnavailableException,
-	te *TimedOutException) bool {
+func IsRetryable(err error) bool {
 	// EOFs can occur if the Cassandra server is restarted. In that case,
 	// we should just contact it again and retry.
 	if err != nil && err.Error() == io.EOF.Error() {
@@ -125,9 +124,7 @@ func (self *RetryCassandraClient) Reconnect() error {
 // Parameters:
 //  - AuthRequest: request for authentication to the Cassandra service.
 func (self *RetryCassandraClient) Login(
-	auth_request *AuthenticationRequest) (*AuthenticationException,
-	*AuthorizationException,
-	error) {
+	auth_request *AuthenticationRequest) error {
 	var begin time.Time = time.Now()
 	self.auth = auth_request
 	self.mtx.RLock()
@@ -141,14 +138,14 @@ func (self *RetryCassandraClient) Login(
 //
 // Parameters:
 //  - Keyspace
-func (self *RetryCassandraClient) SetKeyspace(keyspace string) (
-	*InvalidRequestException, error) {
+func (self *RetryCassandraClient) SetKeyspace(keyspace string) error {
 	var begin time.Time = time.Now()
 	self.keyspace = keyspace
 	self.mtx.RLock()
 	defer self.mtx.RUnlock()
 	cassandra_num_ops.Add("SetKeyspace", 1)
-	defer cassandra_ops_latency.Add("SetKeyspace", time.Now().UnixNano()-begin.UnixNano())
+	defer cassandra_ops_latency.Add("SetKeyspace",
+		time.Now().UnixNano()-begin.UnixNano())
 	return self.wrapped.SetKeyspace(keyspace)
 }
 
@@ -161,25 +158,21 @@ func (self *RetryCassandraClient) SetKeyspace(keyspace string) (
 //  - ColumnPath
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) Get(key []byte, column_path *ColumnPath,
-	consistency_level ConsistencyLevel) (r *ColumnOrSuperColumn,
-	ire *InvalidRequestException, nfe *NotFoundException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (r *ColumnOrSuperColumn, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, nfe, ue, te, err = self.wrapped.Get(
-		key, column_path, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.Get(key, column_path, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, nfe, ue, te, err = self.wrapped.Get(
-			key, column_path, consistency_level)
+		r, err = self.wrapped.Get(key, column_path, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Get", 1)
 	cassandra_ops_latency.Add("Get", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || nfe != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("Get", 1)
 	}
 	return
@@ -196,25 +189,23 @@ func (self *RetryCassandraClient) Get(key []byte, column_path *ColumnPath,
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) GetSlice(
 	key []byte, column_parent *ColumnParent, predicate *SlicePredicate,
-	consistency_level ConsistencyLevel) (r []*ColumnOrSuperColumn,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (r []*ColumnOrSuperColumn, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.GetSlice(key, column_parent, predicate,
+	r, err = self.wrapped.GetSlice(key, column_parent, predicate,
 		consistency_level)
-	if isRetryable(err, ue, te) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.GetSlice(key, column_parent,
+		r, err = self.wrapped.GetSlice(key, column_parent,
 			predicate, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("GetSlice", 1)
 	cassandra_ops_latency.Add("GetSlice", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("GetSlice", 1)
 	}
 	return
@@ -231,25 +222,23 @@ func (self *RetryCassandraClient) GetSlice(
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) GetCount(key []byte,
 	column_parent *ColumnParent, predicate *SlicePredicate,
-	consistency_level ConsistencyLevel) (r int32,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (r int32, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.GetCount(key, column_parent,
-		predicate, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.GetCount(key, column_parent, predicate,
+		consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.GetCount(key, column_parent,
-			predicate, consistency_level)
+		r, err = self.wrapped.GetCount(key, column_parent, predicate,
+			consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("GetCount", 1)
 	cassandra_ops_latency.Add("GetCount", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("GetCount", 1)
 	}
 	return
@@ -266,24 +255,23 @@ func (self *RetryCassandraClient) GetCount(key []byte,
 func (self *RetryCassandraClient) MultigetSlice(keys [][]byte,
 	column_parent *ColumnParent, predicate *SlicePredicate,
 	consistency_level ConsistencyLevel) (r map[string][]*ColumnOrSuperColumn,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.MultigetSlice(keys, column_parent,
-		predicate, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.MultigetSlice(keys, column_parent, predicate,
+		consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.MultigetSlice(keys, column_parent,
-			predicate, consistency_level)
+		r, err = self.wrapped.MultigetSlice(keys, column_parent, predicate,
+			consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("MultigetSlice", 1)
 	cassandra_ops_latency.Add("MultigetSlice", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("MultigetSlice", 1)
 	}
 	return
@@ -303,20 +291,21 @@ func (self *RetryCassandraClient) MultigetCount(
 	te *TimedOutException, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.MultigetCount(keys, column_parent,
-		predicate, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.MultigetCount(keys, column_parent, predicate,
+		consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.MultigetCount(keys, column_parent,
-			predicate, consistency_level)
+		r, err = self.wrapped.MultigetCount(keys, column_parent, predicate,
+			consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("MultigetCount", 1)
-	cassandra_ops_latency.Add("MultigetCount", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("MultigetCount",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("MultigetCount", 1)
 	}
 	return
@@ -332,24 +321,24 @@ func (self *RetryCassandraClient) MultigetCount(
 func (self *RetryCassandraClient) GetRangeSlices(
 	column_parent *ColumnParent, predicate *SlicePredicate,
 	range_a1 *KeyRange, consistency_level ConsistencyLevel) (
-	r []*KeySlice, ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	r []*KeySlice, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.GetRangeSlices(column_parent,
-		predicate, range_a1, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.GetRangeSlices(column_parent, predicate, range_a1,
+		consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.GetRangeSlices(column_parent,
-			predicate, range_a1, consistency_level)
+		r, err = self.wrapped.GetRangeSlices(column_parent, predicate, range_a1,
+			consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("GetRangeSlices", 1)
-	cassandra_ops_latency.Add("GetRangeSlices", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("GetRangeSlices",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("GetRangeSlices", 1)
 	}
 	return
@@ -365,25 +354,24 @@ func (self *RetryCassandraClient) GetRangeSlices(
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) GetPagedSlice(column_family string,
 	range_a1 *KeyRange, start_column []byte,
-	consistency_level ConsistencyLevel) (r []*KeySlice,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (r []*KeySlice, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.GetPagedSlice(column_family,
-		range_a1, start_column, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.GetPagedSlice(column_family, range_a1, start_column,
+		consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.GetPagedSlice(column_family,
-			range_a1, start_column, consistency_level)
+		r, err = self.wrapped.GetPagedSlice(column_family, range_a1,
+			start_column, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("GetPagedSlice", 1)
-	cassandra_ops_latency.Add("GetPagedSlice", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("GetPagedSlice",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("GetPagedSlice", 1)
 	}
 	return
@@ -401,25 +389,23 @@ func (self *RetryCassandraClient) GetPagedSlice(column_family string,
 func (self *RetryCassandraClient) GetIndexedSlices(
 	column_parent *ColumnParent, index_clause *IndexClause,
 	column_predicate *SlicePredicate,
-	consistency_level ConsistencyLevel) (r []*KeySlice,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (r []*KeySlice, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.GetIndexedSlices(column_parent,
-		index_clause, column_predicate, consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.GetIndexedSlices(column_parent, index_clause,
+		column_predicate, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.GetIndexedSlices(column_parent,
-			index_clause, column_predicate, consistency_level)
+		r, err = self.wrapped.GetIndexedSlices(column_parent, index_clause,
+			column_predicate, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("GetIndexedSlices", 1)
 	cassandra_ops_latency.Add("GetIndexedSlices", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("GetIndexedSlices", 1)
 	}
 	return
@@ -435,24 +421,21 @@ func (self *RetryCassandraClient) GetIndexedSlices(
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) Insert(key []byte,
 	column_parent *ColumnParent, column *Column,
-	consistency_level ConsistencyLevel) (ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.Insert(key, column_parent, column,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.Insert(key, column_parent, column, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.Insert(key, column_parent, column,
-			consistency_level)
+		err = self.wrapped.Insert(key, column_parent, column, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Insert", 1)
 	cassandra_ops_latency.Add("Insert", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("Insert", 1)
 	}
 	return
@@ -467,24 +450,21 @@ func (self *RetryCassandraClient) Insert(key []byte,
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) Add(key []byte,
 	column_parent *ColumnParent, column *CounterColumn,
-	consistency_level ConsistencyLevel) (ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.Add(key, column_parent, column,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.Add(key, column_parent, column, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.Add(key, column_parent, column,
-			consistency_level)
+		err = self.wrapped.Add(key, column_parent, column, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Add", 1)
 	cassandra_ops_latency.Add("Add", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("Add", 1)
 	}
 	return
@@ -521,25 +501,23 @@ func (self *RetryCassandraClient) Add(key []byte,
 func (self *RetryCassandraClient) Cas(key []byte, column_family string,
 	expected []*Column, updates []*Column,
 	serial_consistency_level ConsistencyLevel,
-	commit_consistency_level ConsistencyLevel) (r *CASResult,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	commit_consistency_level ConsistencyLevel) (r *CASResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, err = self.wrapped.Cas(key, column_family, expected,
-		updates, serial_consistency_level, commit_consistency_level)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.Cas(key, column_family, expected, updates,
+		serial_consistency_level, commit_consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, err = self.wrapped.Cas(key, column_family, expected,
-			updates, serial_consistency_level, commit_consistency_level)
+		r, err = self.wrapped.Cas(key, column_family, expected, updates,
+			serial_consistency_level, commit_consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Cas", 1)
 	cassandra_ops_latency.Add("Cas", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("Cas", 1)
 	}
 	return
@@ -557,25 +535,22 @@ func (self *RetryCassandraClient) Cas(key []byte, column_family string,
 //  - Timestamp
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) Remove(key []byte, column_path *ColumnPath,
-	timestamp int64, consistency_level ConsistencyLevel) (
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+	timestamp int64, consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.Remove(key, column_path, timestamp,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.Remove(key, column_path, timestamp, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.Remove(key, column_path, timestamp,
+		err = self.wrapped.Remove(key, column_path, timestamp,
 			consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Remove", 1)
 	cassandra_ops_latency.Add("Remove", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("Remove", 1)
 	}
 	return
@@ -591,24 +566,22 @@ func (self *RetryCassandraClient) Remove(key []byte, column_path *ColumnPath,
 //  - Path
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) RemoveCounter(key []byte, path *ColumnPath,
-	consistency_level ConsistencyLevel) (ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.RemoveCounter(key, path,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.RemoveCounter(key, path, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.RemoveCounter(key, path,
-			consistency_level)
+		err = self.wrapped.RemoveCounter(key, path, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("RemoveCounter", 1)
-	cassandra_ops_latency.Add("RemoveCounter", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("RemoveCounter",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("RemoveCounter", 1)
 	}
 	return
@@ -624,24 +597,22 @@ func (self *RetryCassandraClient) RemoveCounter(key []byte, path *ColumnPath,
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) BatchMutate(
 	mutation_map map[string]map[string][]*Mutation,
-	consistency_level ConsistencyLevel) (ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.BatchMutate(mutation_map,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.BatchMutate(mutation_map, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.BatchMutate(mutation_map,
-			consistency_level)
+		err = self.wrapped.BatchMutate(mutation_map, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("BatchMutate", 1)
-	cassandra_ops_latency.Add("BatchMutate", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("BatchMutate",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("BatchMutate", 1)
 	}
 	return
@@ -658,24 +629,22 @@ func (self *RetryCassandraClient) BatchMutate(
 //  - ConsistencyLevel
 func (self *RetryCassandraClient) AtomicBatchMutate(
 	mutation_map map[string]map[string][]*Mutation,
-	consistency_level ConsistencyLevel) (ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException, err error) {
+	consistency_level ConsistencyLevel) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.AtomicBatchMutate(mutation_map,
-		consistency_level)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.AtomicBatchMutate(mutation_map, consistency_level)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.AtomicBatchMutate(mutation_map,
-			consistency_level)
+		err = self.wrapped.AtomicBatchMutate(mutation_map, consistency_level)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("AtomicBatchMutate", 1)
-	cassandra_ops_latency.Add("AtomicBatchMutate", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("AtomicBatchMutate",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("AtomicBatchMutate", 1)
 	}
 	return
@@ -691,23 +660,22 @@ func (self *RetryCassandraClient) AtomicBatchMutate(
 //
 // Parameters:
 //  - Cfname
-func (self *RetryCassandraClient) Truncate(cfname string) (
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, err error) {
+func (self *RetryCassandraClient) Truncate(cfname string) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, ue, te, err = self.wrapped.Truncate(cfname)
-	if isRetryable(err, ue, te) {
+	err = self.wrapped.Truncate(cfname)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, ue, te, err = self.wrapped.Truncate(cfname)
+		err = self.wrapped.Truncate(cfname)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("Truncate", 1)
-	cassandra_ops_latency.Add("Truncate", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || err != nil {
+	cassandra_ops_latency.Add("Truncate",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("Truncate", 1)
 	}
 	return
@@ -718,45 +686,43 @@ func (self *RetryCassandraClient) Truncate(cfname string) (
 // DatabaseDescriptor.INITIAL_VERSION. the cluster is all on the same version
 // if the size of the map is 1.
 func (self *RetryCassandraClient) DescribeSchemaVersions() (
-	r map[string][]string, ire *InvalidRequestException,
-	err error) {
+	r map[string][]string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeSchemaVersions()
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeSchemaVersions()
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeSchemaVersions()
+		r, err = self.wrapped.DescribeSchemaVersions()
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeSchemaVersions", 1)
 	cassandra_ops_latency.Add("DescribeSchemaVersions",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("DescribeSchemaVersions", 1)
 	}
 	return
 }
 
 // list the defined keyspaces in this cluster
-func (self *RetryCassandraClient) DescribeKeyspaces() (
-	r []*KsDef, ire *InvalidRequestException, err error) {
+func (self *RetryCassandraClient) DescribeKeyspaces() (r []*KsDef, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeKeyspaces()
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeKeyspaces()
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeKeyspaces()
+		r, err = self.wrapped.DescribeKeyspaces()
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeKeyspaces", 1)
 	cassandra_ops_latency.Add("DescribeKeyspaces", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("DescribeKeyspaces", 1)
 	}
 	return
@@ -768,7 +734,7 @@ func (self *RetryCassandraClient) DescribeClusterName() (
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
 	r, err = self.wrapped.DescribeClusterName()
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
@@ -777,7 +743,8 @@ func (self *RetryCassandraClient) DescribeClusterName() (
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeClusterName", 1)
-	cassandra_ops_latency.Add("DescribeClusterName", time.Now().UnixNano()-begin.UnixNano())
+	cassandra_ops_latency.Add("DescribeClusterName",
+		time.Now().UnixNano()-begin.UnixNano())
 	if err != nil {
 		cassandra_num_errors.Add("DescribeClusterName", 1)
 	}
@@ -789,7 +756,7 @@ func (self *RetryCassandraClient) DescribeVersion() (r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
 	r, err = self.wrapped.DescribeVersion()
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
@@ -798,7 +765,8 @@ func (self *RetryCassandraClient) DescribeVersion() (r string, err error) {
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeVersion", 1)
-	cassandra_ops_latency.Add("DescribeVersion", time.Now().UnixNano()-begin.UnixNano())
+	cassandra_ops_latency.Add("DescribeVersion",
+		time.Now().UnixNano()-begin.UnixNano())
 	if err != nil {
 		cassandra_num_errors.Add("DescribeVersion", 1)
 	}
@@ -817,21 +785,22 @@ func (self *RetryCassandraClient) DescribeVersion() (r string, err error) {
 // Parameters:
 //  - Keyspace
 func (self *RetryCassandraClient) DescribeRing(keyspace string) (
-	r []*TokenRange, ire *InvalidRequestException, err error) {
+	r []*TokenRange, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeRing(keyspace)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeRing(keyspace)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeRing(keyspace)
+		r, err = self.wrapped.DescribeRing(keyspace)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeRing", 1)
-	cassandra_ops_latency.Add("DescribeRing", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	cassandra_ops_latency.Add("DescribeRing",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("DescribeRing", 1)
 	}
 	return
@@ -841,21 +810,22 @@ func (self *RetryCassandraClient) DescribeRing(keyspace string) (
 // without taking replication into consideration
 // https://issues.apache.org/jira/browse/CASSANDRA-4092
 func (self *RetryCassandraClient) DescribeTokenMap() (
-	r map[string]string, ire *InvalidRequestException, err error) {
+	r map[string]string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeTokenMap()
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeTokenMap()
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeTokenMap()
+		r, err = self.wrapped.DescribeTokenMap()
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeTokenMap", 1)
-	cassandra_ops_latency.Add("DescribeTokenMap", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	cassandra_ops_latency.Add("DescribeTokenMap",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("DescribeTokenMap", 1)
 	}
 	return
@@ -866,7 +836,7 @@ func (self *RetryCassandraClient) DescribePartitioner() (r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
 	r, err = self.wrapped.DescribePartitioner()
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
@@ -875,7 +845,8 @@ func (self *RetryCassandraClient) DescribePartitioner() (r string, err error) {
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribePartitioner", 1)
-	cassandra_ops_latency.Add("DescribePartitioner", time.Now().UnixNano()-begin.UnixNano())
+	cassandra_ops_latency.Add("DescribePartitioner",
+		time.Now().UnixNano()-begin.UnixNano())
 	if err != nil {
 		cassandra_num_errors.Add("DescribePartitioner", 1)
 	}
@@ -887,7 +858,7 @@ func (self *RetryCassandraClient) DescribeSnitch() (r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
 	r, err = self.wrapped.DescribeSnitch()
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
@@ -896,7 +867,8 @@ func (self *RetryCassandraClient) DescribeSnitch() (r string, err error) {
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeSnitch", 1)
-	cassandra_ops_latency.Add("DescribeSnitch", time.Now().UnixNano()-begin.UnixNano())
+	cassandra_ops_latency.Add("DescribeSnitch",
+		time.Now().UnixNano()-begin.UnixNano())
 	if err != nil {
 		cassandra_num_errors.Add("DescribeSnitch", 1)
 	}
@@ -908,22 +880,21 @@ func (self *RetryCassandraClient) DescribeSnitch() (r string, err error) {
 // Parameters:
 //  - Keyspace
 func (self *RetryCassandraClient) DescribeKeyspace(keyspace string) (
-	r *KsDef, nfe *NotFoundException, ire *InvalidRequestException,
-	err error) {
+	r *KsDef, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, nfe, ire, err = self.wrapped.DescribeKeyspace(keyspace)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeKeyspace(keyspace)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, nfe, ire, err = self.wrapped.DescribeKeyspace(keyspace)
+		r, err = self.wrapped.DescribeKeyspace(keyspace)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeKeyspace", 1)
 	cassandra_ops_latency.Add("DescribeKeyspace", time.Now().UnixNano()-begin.UnixNano())
-	if nfe != nil || ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("DescribeKeyspace", 1)
 	}
 	return
@@ -942,23 +913,24 @@ func (self *RetryCassandraClient) DescribeKeyspace(keyspace string) (
 //  - KeysPerSplit
 func (self *RetryCassandraClient) DescribeSplits(cfName string,
 	start_token string, end_token string, keys_per_split int32) (
-	r []string, ire *InvalidRequestException, err error) {
+	r []string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeSplits(cfName, start_token, end_token,
+	r, err = self.wrapped.DescribeSplits(cfName, start_token, end_token,
 		keys_per_split)
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeSplits(cfName, start_token,
-			end_token, keys_per_split)
+		r, err = self.wrapped.DescribeSplits(cfName, start_token, end_token,
+			keys_per_split)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeSplits", 1)
-	cassandra_ops_latency.Add("DescribeSplits", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	cassandra_ops_latency.Add("DescribeSplits",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("DescribeSplits", 1)
 	}
 	return
@@ -972,7 +944,7 @@ func (self *RetryCassandraClient) TraceNextQuery() (r []byte, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
 	r, err = self.wrapped.TraceNextQuery()
-	if isRetryable(err, nil, nil) {
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
@@ -981,7 +953,8 @@ func (self *RetryCassandraClient) TraceNextQuery() (r []byte, err error) {
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("TraceNextQuery", 1)
-	cassandra_ops_latency.Add("TraceNextQuery", time.Now().UnixNano()-begin.UnixNano())
+	cassandra_ops_latency.Add("TraceNextQuery",
+		time.Now().UnixNano()-begin.UnixNano())
 	if err != nil {
 		cassandra_num_errors.Add("TraceNextQuery", 1)
 	}
@@ -995,23 +968,24 @@ func (self *RetryCassandraClient) TraceNextQuery() (r []byte, err error) {
 //  - KeysPerSplit
 func (self *RetryCassandraClient) DescribeSplitsEx(cfName string,
 	start_token string, end_token string, keys_per_split int32) (
-	r []*CfSplit, ire *InvalidRequestException, err error) {
+	r []*CfSplit, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.DescribeSplitsEx(cfName, start_token,
-		end_token, keys_per_split)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.DescribeSplitsEx(cfName, start_token, end_token,
+		keys_per_split)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.DescribeSplitsEx(cfName, start_token,
+		r, err = self.wrapped.DescribeSplitsEx(cfName, start_token,
 			end_token, keys_per_split)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("DescribeSplitsEx", 1)
-	cassandra_ops_latency.Add("DescribeSplitsEx", time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	cassandra_ops_latency.Add("DescribeSplitsEx",
+		time.Now().UnixNano()-begin.UnixNano())
+	if err != nil {
 		cassandra_num_errors.Add("DescribeSplitsEx", 1)
 	}
 	return
@@ -1022,23 +996,22 @@ func (self *RetryCassandraClient) DescribeSplitsEx(cfName string,
 // Parameters:
 //  - CfDef
 func (self *RetryCassandraClient) SystemAddColumnFamily(cf_def *CfDef) (
-	r string, ire *InvalidRequestException, sde *SchemaDisagreementException,
-	err error) {
+	r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemAddColumnFamily(cf_def)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemAddColumnFamily(cf_def)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemAddColumnFamily(cf_def)
+		r, err = self.wrapped.SystemAddColumnFamily(cf_def)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemAddColumnFamily", 1)
 	cassandra_ops_latency.Add("SystemAddColumnFamily",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemAddColumnFamily", 1)
 	}
 	return
@@ -1049,23 +1022,22 @@ func (self *RetryCassandraClient) SystemAddColumnFamily(cf_def *CfDef) (
 // Parameters:
 //  - ColumnFamily
 func (self *RetryCassandraClient) SystemDropColumnFamily(
-	column_family string) (r string, ire *InvalidRequestException,
-	sde *SchemaDisagreementException, err error) {
+	column_family string) (r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemDropColumnFamily(column_family)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemDropColumnFamily(column_family)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemDropColumnFamily(column_family)
+		r, err = self.wrapped.SystemDropColumnFamily(column_family)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemDropColumnFamily", 1)
 	cassandra_ops_latency.Add("SystemDropColumnFamily",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemDropColumnFamily", 1)
 	}
 	return
@@ -1077,23 +1049,22 @@ func (self *RetryCassandraClient) SystemDropColumnFamily(
 // Parameters:
 //  - KsDef
 func (self *RetryCassandraClient) SystemAddKeyspace(ks_def *KsDef) (
-	r string, ire *InvalidRequestException, sde *SchemaDisagreementException,
-	err error) {
+	r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemAddKeyspace(ks_def)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemAddKeyspace(ks_def)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemAddKeyspace(ks_def)
+		r, err = self.wrapped.SystemAddKeyspace(ks_def)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemDropColumnFamily", 1)
 	cassandra_ops_latency.Add("SystemDropColumnFamily",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemDropColumnFamily", 1)
 	}
 	return
@@ -1105,23 +1076,22 @@ func (self *RetryCassandraClient) SystemAddKeyspace(ks_def *KsDef) (
 // Parameters:
 //  - Keyspace
 func (self *RetryCassandraClient) SystemDropKeyspace(
-	keyspace string) (r string, ire *InvalidRequestException,
-	sde *SchemaDisagreementException, err error) {
+	keyspace string) (r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemDropKeyspace(keyspace)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemDropKeyspace(keyspace)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemDropKeyspace(keyspace)
+		r, err = self.wrapped.SystemDropKeyspace(keyspace)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemDropKeyspace", 1)
 	cassandra_ops_latency.Add("SystemDropKeyspace",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemDropKeyspace", 1)
 	}
 	return
@@ -1132,23 +1102,22 @@ func (self *RetryCassandraClient) SystemDropKeyspace(
 // Parameters:
 //  - KsDef
 func (self *RetryCassandraClient) SystemUpdateKeyspace(ks_def *KsDef) (
-	r string, ire *InvalidRequestException, sde *SchemaDisagreementException,
-	err error) {
+	r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemUpdateKeyspace(ks_def)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemUpdateKeyspace(ks_def)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemUpdateKeyspace(ks_def)
+		r, err = self.wrapped.SystemUpdateKeyspace(ks_def)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemUpdateKeyspace", 1)
 	cassandra_ops_latency.Add("SystemUpdateKeyspace",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemUpdateKeyspace", 1)
 	}
 	return
@@ -1159,23 +1128,22 @@ func (self *RetryCassandraClient) SystemUpdateKeyspace(ks_def *KsDef) (
 // Parameters:
 //  - CfDef
 func (self *RetryCassandraClient) SystemUpdateColumnFamily(cf_def *CfDef) (
-	r string, ire *InvalidRequestException, sde *SchemaDisagreementException,
-	err error) {
+	r string, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, sde, err = self.wrapped.SystemUpdateColumnFamily(cf_def)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.SystemUpdateColumnFamily(cf_def)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, sde, err = self.wrapped.SystemUpdateColumnFamily(cf_def)
+		r, err = self.wrapped.SystemUpdateColumnFamily(cf_def)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SystemUpdateColumnFamily", 1)
 	cassandra_ops_latency.Add("SystemUpdateColumnFamily",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SystemUpdateColumnFamily", 1)
 	}
 	return
@@ -1187,26 +1155,22 @@ func (self *RetryCassandraClient) SystemUpdateColumnFamily(cf_def *CfDef) (
 //  - Query
 //  - Compression
 func (self *RetryCassandraClient) ExecuteCqlQuery(query []byte,
-	compression Compression) (
-	r *CqlResult, ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, sde *SchemaDisagreementException, err error) {
+	compression Compression) (r *CqlResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, sde, err = self.wrapped.ExecuteCqlQuery(query,
-		compression)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.ExecuteCqlQuery(query, compression)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, sde, err = self.wrapped.ExecuteCqlQuery(query,
-			compression)
+		r, err = self.wrapped.ExecuteCqlQuery(query, compression)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("ExecuteCqlQuery", 1)
 	cassandra_ops_latency.Add("ExecuteCqlQuery",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("ExecuteCqlQuery", 1)
 	}
 	return
@@ -1221,25 +1185,22 @@ func (self *RetryCassandraClient) ExecuteCqlQuery(query []byte,
 //  - Consistency
 func (self *RetryCassandraClient) ExecuteCql3Query(query []byte,
 	compression Compression, consistency ConsistencyLevel) (
-	r *CqlResult, ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, sde *SchemaDisagreementException, err error) {
+	r *CqlResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, sde, err = self.wrapped.ExecuteCql3Query(query,
-		compression, consistency)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.ExecuteCql3Query(query, compression, consistency)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, sde, err = self.wrapped.ExecuteCql3Query(query,
-			compression, consistency)
+		r, err = self.wrapped.ExecuteCql3Query(query, compression, consistency)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("ExecuteCql3Query", 1)
 	cassandra_ops_latency.Add("ExecuteCql3Query",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("ExecuteCql3Query", 1)
 	}
 	return
@@ -1251,23 +1212,22 @@ func (self *RetryCassandraClient) ExecuteCql3Query(query []byte,
 //  - Query
 //  - Compression
 func (self *RetryCassandraClient) PrepareCqlQuery(query []byte,
-	compression Compression) (r *CqlPreparedResult,
-	ire *InvalidRequestException, err error) {
+	compression Compression) (r *CqlPreparedResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.PrepareCqlQuery(query, compression)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.PrepareCqlQuery(query, compression)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.PrepareCqlQuery(query, compression)
+		r, err = self.wrapped.PrepareCqlQuery(query, compression)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("PrepareCqlQuery", 1)
 	cassandra_ops_latency.Add("PrepareCqlQuery",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("PrepareCqlQuery", 1)
 	}
 	return
@@ -1283,23 +1243,22 @@ func (self *RetryCassandraClient) PrepareCqlQuery(query []byte,
 //  - Query
 //  - Compression
 func (self *RetryCassandraClient) PrepareCql3Query(query []byte,
-	compression Compression) (r *CqlPreparedResult,
-	ire *InvalidRequestException, err error) {
+	compression Compression) (r *CqlPreparedResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, err = self.wrapped.PrepareCql3Query(query, compression)
-	if isRetryable(err, nil, nil) {
+	r, err = self.wrapped.PrepareCql3Query(query, compression)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, err = self.wrapped.PrepareCql3Query(query, compression)
+		r, err = self.wrapped.PrepareCql3Query(query, compression)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("PrepareCql3Query", 1)
 	cassandra_ops_latency.Add("PrepareCql3Query",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("PrepareCql3Query", 1)
 	}
 	return
@@ -1311,26 +1270,22 @@ func (self *RetryCassandraClient) PrepareCql3Query(query []byte,
 //  - ItemId
 //  - Values
 func (self *RetryCassandraClient) ExecutePreparedCqlQuery(itemId int32,
-	values [][]byte) (r *CqlResult, ire *InvalidRequestException,
-	ue *UnavailableException, te *TimedOutException,
-	sde *SchemaDisagreementException, err error) {
+	values [][]byte) (r *CqlResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, sde, err = self.wrapped.ExecutePreparedCqlQuery(itemId,
-		values)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.ExecutePreparedCqlQuery(itemId, values)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, sde, err = self.wrapped.ExecutePreparedCqlQuery(
-			itemId, values)
+		r, err = self.wrapped.ExecutePreparedCqlQuery(itemId, values)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("ExecutePreparedCqlQuery", 1)
 	cassandra_ops_latency.Add("ExecutePreparedCqlQuery",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("ExecutePreparedCqlQuery", 1)
 	}
 	return
@@ -1345,26 +1300,23 @@ func (self *RetryCassandraClient) ExecutePreparedCqlQuery(itemId int32,
 //  - Values
 //  - Consistency
 func (self *RetryCassandraClient) ExecutePreparedCql3Query(itemId int32,
-	values [][]byte, consistency ConsistencyLevel) (r *CqlResult,
-	ire *InvalidRequestException, ue *UnavailableException,
-	te *TimedOutException, sde *SchemaDisagreementException, err error) {
+	values [][]byte, consistency ConsistencyLevel) (r *CqlResult_, err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	r, ire, ue, te, sde, err = self.wrapped.ExecutePreparedCql3Query(itemId,
-		values, consistency)
-	if isRetryable(err, ue, te) {
+	r, err = self.wrapped.ExecutePreparedCql3Query(itemId, values, consistency)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		r, ire, ue, te, sde, err = self.wrapped.ExecutePreparedCql3Query(
-			itemId, values, consistency)
+		r, err = self.wrapped.ExecutePreparedCql3Query(itemId, values,
+			consistency)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("ExecutePreparedCqlQuery", 1)
 	cassandra_ops_latency.Add("ExecutePreparedCqlQuery",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || ue != nil || te != nil || sde != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("ExecutePreparedCqlQuery", 1)
 	}
 	return
@@ -1375,23 +1327,22 @@ func (self *RetryCassandraClient) ExecutePreparedCql3Query(itemId int32,
 //
 // Parameters:
 //  - Version
-func (self *RetryCassandraClient) SetCqlVersion(version string) (
-	ire *InvalidRequestException, err error) {
+func (self *RetryCassandraClient) SetCqlVersion(version string) (err error) {
 	var begin time.Time = time.Now()
 	self.mtx.RLock()
-	ire, err = self.wrapped.SetCqlVersion(version)
-	if isRetryable(err, nil, nil) {
+	err = self.wrapped.SetCqlVersion(version)
+	if IsRetryable(err) {
 		self.mtx.RUnlock()
 		self.Reconnect()
 		begin = time.Now()
 		self.mtx.RLock()
-		ire, err = self.wrapped.SetCqlVersion(version)
+		err = self.wrapped.SetCqlVersion(version)
 	}
 	self.mtx.RUnlock()
 	cassandra_num_ops.Add("SetCqlVersion", 1)
 	cassandra_ops_latency.Add("SetCqlVersion",
 		time.Now().UnixNano()-begin.UnixNano())
-	if ire != nil || err != nil {
+	if err != nil {
 		cassandra_num_errors.Add("SetCqlVersion", 1)
 	}
 	return
