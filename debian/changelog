@@ -1,3 +1,9 @@
+golang-cassandra-gen (19.37.0.3-2) unstable; urgency=low
+
+  * Rebuild with modern thrift to handle exceptions better.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Tue, 15 Mar 2016 00:04:10 +0100
+
 golang-cassandra-gen (19.37.0.3-1) unstable; urgency=low
 
   * Add UUID objects and methods to generate, serialize and parse
@@ -22,3 +28,4 @@ golang-cassandra-gen (19.37.0-1) unstable; urgency=low
   * Initial release. Closes: whatever it closes
 
  -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Sun, 03 Nov 2013 00:09:48 +0100
+
