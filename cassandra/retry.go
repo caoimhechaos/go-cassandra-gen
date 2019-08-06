@@ -3,7 +3,10 @@ package cassandra
 import (
 	"expvar"
 	"io"
+	"net"
+	"os"
 	"sync"
+	"syscall"
 	"time"
 
 	"git.apache.org/thrift.git/lib/go/thrift"
@@ -39,10 +42,26 @@ type RetryCassandraClient struct {
 
 // Determine if a given error can be solved by submitting the request again.
 func IsRetryable(err error) bool {
+	var operr *net.OpError
+	var ok bool
+
+	if err == nil {
+		return false
+	}
+
 	// EOFs can occur if the Cassandra server is restarted. In that case,
 	// we should just contact it again and retry.
 	if err != nil && err.Error() == io.EOF.Error() {
 		return true
+	}
+
+	operr, ok = err.(*net.OpError)
+	if ok {
+		var syscallErr *os.SyscallError
+		syscallErr, ok = operr.Err.(*os.SyscallError)
+		if syscallErr.Err == syscall.ECONNRESET {
+			return true
+		}
 	}
 
 	return false
